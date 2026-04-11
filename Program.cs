@@ -14,6 +14,16 @@ builder.Services.AddCors(options =>
             .GetSection("Cors:AllowedOrigins")
             .Get<string[]>() ?? Array.Empty<string>();
 
+        if (origins.Contains("*"))
+        {
+            policy
+                .AllowAnyOrigin()
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+
+            return;
+        }
+
         policy
             .WithOrigins(origins)
             .AllowAnyHeader()
@@ -55,9 +65,10 @@ app.MapGet("/api/terminal-visual", async (
 
     try
     {
-        var response = await laboratoryApi.GetVisualIdentityAsync(hostName, cancellationToken);
+        using var response = await laboratoryApi.GetVisualIdentityAsync(hostName, cancellationToken);
+        var json = response.RootElement.GetRawText();
 
-        return Results.Content(response.RootElement.GetRawText(), "application/json");
+        return Results.Content(json, "application/json");
     }
     catch (LaboratoryApiConfigurationException exception)
     {

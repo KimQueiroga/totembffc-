@@ -16,6 +16,8 @@ As URLs ficam em `appsettings.json`:
 
 Credenciais locais devem ficar em `appsettings.Local.json`, que e ignorado pelo Git. Use `appsettings.Local.example.json` como referencia.
 
+Durante o desenvolvimento o CORS aceita qualquer origem (`Cors:AllowedOrigins: ["*"]`), porque o Flutter Web pode subir em portas diferentes quando o `--web-port` nao e fixado. Antes de publicar, troque `*` pelos hosts reais do terminal.
+
 Exemplo:
 
 ```json
