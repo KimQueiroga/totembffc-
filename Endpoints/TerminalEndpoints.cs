@@ -42,6 +42,39 @@ public static class TerminalEndpoints
                 cancellationToken);
         });
 
+        api.MapPost("/client-token", async (
+            ClientTokenRequest request,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateClientTokenRequest(request);
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            try
+            {
+                using var response = await laboratoryApi.AuthenticateClientAsync(
+                    request.Cpf.Trim(),
+                    request.Password,
+                    request.BirthDate.Trim(),
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
         return app;
     }
 
@@ -74,4 +107,28 @@ public static class TerminalEndpoints
             return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
         }
     }
+
+    private static Dictionary<string, string[]> ValidateClientTokenRequest(ClientTokenRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (string.IsNullOrWhiteSpace(request.Cpf))
+        {
+            errors["cpf"] = new[] { "CPF deve ser informado." };
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            errors["password"] = new[] { "Senha deve ser informada." };
+        }
+
+        if (string.IsNullOrWhiteSpace(request.BirthDate))
+        {
+            errors["birthDate"] = new[] { "Data de nascimento deve ser informada." };
+        }
+
+        return errors;
+    }
+
+    private sealed record ClientTokenRequest(string Cpf, string Password, string BirthDate);
 }

@@ -44,6 +44,44 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             cancellationToken);
     }
 
+    public async Task<JsonDocument> AuthenticateClientAsync(
+        string cpf,
+        string password,
+        string birthDate,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        var token = await GetBearerTokenAsync(environment, cancellationToken);
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/mobileRest/Cliente/Token/";
+        var payload = JsonSerializer.Serialize(new
+        {
+            authKey = cpf,
+            authPass = password,
+            authKeyType = "1",
+            birthDate,
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Client token request failed. StatusCode={StatusCode}, Body={Body}",
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao autenticar cliente. HTTP {(int)response.StatusCode}.");
+        }
+
+        return JsonDocument.Parse(content);
+    }
+
     private async Task<JsonDocument> SendAuthorizedGetAsync(
         string hostName,
         string resource,
