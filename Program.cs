@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using TotemBff.Configuration;
+using TotemBff.Endpoints;
 using TotemBff.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,71 +44,6 @@ var app = builder.Build();
 
 app.UseCors("FlutterLocal");
 
-app.MapGet("/api/health", (IOptions<LaboratoryApiOptions> options) => Results.Ok(new
-{
-    status = "ok",
-    service = "Totem BFF C#",
-    environment = options.Value.ActiveEnvironment,
-}));
-
-app.MapGet("/api/terminal-visual", async (
-    string hostName,
-    ILaboratoryApiClient laboratoryApi,
-    CancellationToken cancellationToken) =>
-{
-    if (string.IsNullOrWhiteSpace(hostName) || !TerminalHostNameValidator.IsValid(hostName))
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["hostName"] = new[] { "hostName deve conter apenas letras, numeros, ponto, hifen ou underline." },
-        });
-    }
-
-    try
-    {
-        using var response = await laboratoryApi.GetVisualIdentityAsync(hostName, cancellationToken);
-        var json = response.RootElement.GetRawText();
-
-        return Results.Content(json, "application/json");
-    }
-    catch (LaboratoryApiConfigurationException exception)
-    {
-        return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
-    }
-    catch (LaboratoryApiException exception)
-    {
-        return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
-    }
-});
-
-app.MapGet("/api/terminal-context", async (
-    string hostName,
-    ILaboratoryApiClient laboratoryApi,
-    CancellationToken cancellationToken) =>
-{
-    if (string.IsNullOrWhiteSpace(hostName) || !TerminalHostNameValidator.IsValid(hostName))
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["hostName"] = new[] { "hostName deve conter apenas letras, numeros, ponto, hifen ou underline." },
-        });
-    }
-
-    try
-    {
-        using var response = await laboratoryApi.GetTerminalContextAsync(hostName, cancellationToken);
-        var json = response.RootElement.GetRawText();
-
-        return Results.Content(json, "application/json");
-    }
-    catch (LaboratoryApiConfigurationException exception)
-    {
-        return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
-    }
-    catch (LaboratoryApiException exception)
-    {
-        return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
-    }
-});
+app.MapTerminalEndpoints();
 
 app.Run();
