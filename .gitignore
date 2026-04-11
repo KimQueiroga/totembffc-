@@ -39,3 +39,13 @@
 
 # debug information files
 *.dwo
+*.log
+
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+
+# Local secrets
+appsettings.Local.json

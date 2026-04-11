@@ -1,2 +1,67 @@
-# totembffc-
-totembffc#
+# Totem BFF C#
+
+BFF em ASP.NET Core para o sistema de autoatendimento.
+
+## Requisitos
+
+- .NET SDK 8
+
+## Configuracao
+
+As URLs ficam em `appsettings.json`:
+
+- `Dev`: `https://services-hml.grupopardini.com.br/csp`
+- `Homol`: `https://services-hml.grupopardini.com.br/csp`
+- `Prod`: `https://services-prd.grupopardini.com.br/csp`
+
+Credenciais locais devem ficar em `appsettings.Local.json`, que e ignorado pelo Git. Use `appsettings.Local.example.json` como referencia.
+
+Exemplo:
+
+```json
+{
+  "LaboratoryApi": {
+    "ActiveEnvironment": "Dev",
+    "Environments": {
+      "Dev": {
+        "Username": "%PASSELIVRE",
+        "Password": "sua-senha"
+      }
+    }
+  }
+}
+```
+
+Em homologacao/producao, prefira variaveis de ambiente ou secret manager:
+
+```powershell
+$env:LaboratoryApi__ActiveEnvironment = "Prod"
+$env:LaboratoryApi__Environments__Prod__Username = "usuario"
+$env:LaboratoryApi__Environments__Prod__Password = "senha"
+```
+
+## Desenvolvimento
+
+Executar:
+
+```bash
+dotnet run --urls http://127.0.0.1:8000
+```
+
+Health check:
+
+```text
+GET http://127.0.0.1:8000/api/health
+```
+
+Identidade visual:
+
+```text
+GET http://127.0.0.1:8000/api/terminal-visual?hostName=ihpmgaimtotem1
+```
+
+Fluxo interno:
+
+1. `POST /digitalRest/autenticacao/token` com Basic Auth.
+2. Cache do `access_token` usando `expires_in`, descontando `TokenCacheSafetySeconds`.
+3. `GET /digitalRest/autoAtendimento/visual?hostName=...` com `Authorization: Bearer <token>`.
