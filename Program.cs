@@ -21,8 +21,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<ILaboratoryApiClient, LaboratoryApiClient>();
 builder.Services
@@ -32,12 +30,6 @@ builder.Services
     .ValidateOnStart();
 
 var app = builder.Build();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
 
 app.UseCors("FlutterLocal");
 

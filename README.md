@@ -48,6 +48,8 @@ Executar:
 dotnet run --urls http://127.0.0.1:8000
 ```
 
+O projeto nao depende de pacotes NuGet externos. Se a maquina corporativa bloquear `https://api.nuget.org/v3/index.json`, ainda assim o build deve funcionar porque o BFF usa apenas o framework compartilhado do ASP.NET Core instalado com o SDK.
+
 Health check:
 
 ```text
