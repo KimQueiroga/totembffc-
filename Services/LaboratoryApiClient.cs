@@ -7,13 +7,24 @@ using TotemBff.Configuration;
 
 namespace TotemBff.Services;
 
-public sealed class LaboratoryApiClient(
-    HttpClient httpClient,
-    IMemoryCache cache,
-    IOptions<LaboratoryApiOptions> options,
-    ILogger<LaboratoryApiClient> logger) : ILaboratoryApiClient
+public sealed class LaboratoryApiClient : ILaboratoryApiClient
 {
-    private readonly LaboratoryApiOptions _options = options.Value;
+    private readonly IMemoryCache _cache;
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<LaboratoryApiClient> _logger;
+    private readonly LaboratoryApiOptions _options;
+
+    public LaboratoryApiClient(
+        HttpClient httpClient,
+        IMemoryCache cache,
+        IOptions<LaboratoryApiOptions> options,
+        ILogger<LaboratoryApiClient> logger)
+    {
+        _httpClient = httpClient;
+        _cache = cache;
+        _options = options.Value;
+        _logger = logger;
+    }
 
     public async Task<JsonDocument> GetVisualIdentityAsync(string hostName, CancellationToken cancellationToken)
     {
@@ -25,12 +36,12 @@ public sealed class LaboratoryApiClient(
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        using var response = await httpClient.SendAsync(request, cancellationToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning(
+            _logger.LogWarning(
                 "Visual identity request failed. StatusCode={StatusCode}, Body={Body}",
                 (int)response.StatusCode,
                 content);
@@ -45,7 +56,7 @@ public sealed class LaboratoryApiClient(
     {
         var cacheKey = $"laboratory_api_token:{_options.ActiveEnvironment}";
 
-        if (cache.TryGetValue(cacheKey, out string? cachedToken) && !string.IsNullOrWhiteSpace(cachedToken))
+        if (_cache.TryGetValue(cacheKey, out string? cachedToken) && !string.IsNullOrWhiteSpace(cachedToken))
         {
             return cachedToken;
         }
@@ -59,12 +70,12 @@ public sealed class LaboratoryApiClient(
             "Basic",
             Convert.ToBase64String(Encoding.UTF8.GetBytes($"{environment.Username}:{environment.Password}")));
 
-        using var response = await httpClient.SendAsync(request, cancellationToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning(
+            _logger.LogWarning(
                 "Token request failed. StatusCode={StatusCode}, Body={Body}",
                 (int)response.StatusCode,
                 content);
@@ -76,7 +87,7 @@ public sealed class LaboratoryApiClient(
         var token = ExtractToken(payload.RootElement);
         var ttlSeconds = ExtractTtlSeconds(payload.RootElement);
 
-        cache.Set(cacheKey, token, TimeSpan.FromSeconds(ttlSeconds));
+        _cache.Set(cacheKey, token, TimeSpan.FromSeconds(ttlSeconds));
 
         return token;
     }

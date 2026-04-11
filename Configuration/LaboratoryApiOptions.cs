@@ -16,5 +16,5 @@ public sealed class LaboratoryApiOptions
     public int TokenFallbackTtlSeconds { get; init; } = 1500;
 
     [Required]
-    public Dictionary<string, LaboratoryApiEnvironmentOptions> Environments { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, LaboratoryApiEnvironmentOptions> Environments { get; init; } = new Dictionary<string, LaboratoryApiEnvironmentOptions>(StringComparer.OrdinalIgnoreCase);
 }

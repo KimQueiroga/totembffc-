@@ -12,7 +12,7 @@ builder.Services.AddCors(options =>
     {
         var origins = builder.Configuration
             .GetSection("Cors:AllowedOrigins")
-            .Get<string[]>() ?? [];
+            .Get<string[]>() ?? Array.Empty<string>();
 
         policy
             .WithOrigins(origins)
@@ -57,7 +57,7 @@ app.MapGet("/api/terminal-visual", async (
     {
         return Results.ValidationProblem(new Dictionary<string, string[]>
         {
-            ["hostName"] = ["hostName deve conter apenas letras, numeros, ponto, hifen ou underline."],
+            ["hostName"] = new[] { "hostName deve conter apenas letras, numeros, ponto, hifen ou underline." },
         });
     }
 

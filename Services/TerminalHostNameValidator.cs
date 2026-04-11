@@ -2,13 +2,15 @@ using System.Text.RegularExpressions;
 
 namespace TotemBff.Services;
 
-public static partial class TerminalHostNameValidator
+public static class TerminalHostNameValidator
 {
+    private static readonly Regex TerminalHostNameRegex = new(
+        "^[A-Za-z0-9._-]{1,120}$",
+        RegexOptions.Compiled,
+        TimeSpan.FromSeconds(1));
+
     public static bool IsValid(string hostName)
     {
-        return TerminalHostNameRegex().IsMatch(hostName);
+        return TerminalHostNameRegex.IsMatch(hostName);
     }
-
-    [GeneratedRegex("^[A-Za-z0-9._-]{1,120}$")]
-    private static partial Regex TerminalHostNameRegex();
 }
