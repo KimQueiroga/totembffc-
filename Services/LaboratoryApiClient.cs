@@ -28,9 +28,31 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
     public async Task<JsonDocument> GetVisualIdentityAsync(string hostName, CancellationToken cancellationToken)
     {
+        return await SendAuthorizedGetAsync(
+            hostName,
+            "visual",
+            "identidade visual",
+            cancellationToken);
+    }
+
+    public async Task<JsonDocument> GetTerminalContextAsync(string hostName, CancellationToken cancellationToken)
+    {
+        return await SendAuthorizedGetAsync(
+            hostName,
+            "contexto",
+            "contexto do terminal",
+            cancellationToken);
+    }
+
+    private async Task<JsonDocument> SendAuthorizedGetAsync(
+        string hostName,
+        string resource,
+        string errorDescription,
+        CancellationToken cancellationToken)
+    {
         var environment = GetActiveEnvironment();
         var token = await GetBearerTokenAsync(environment, cancellationToken);
-        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/autoAtendimento/visual?hostName={Uri.EscapeDataString(hostName)}";
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/autoAtendimento/{resource}?hostName={Uri.EscapeDataString(hostName)}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -42,11 +64,12 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning(
-                "Visual identity request failed. StatusCode={StatusCode}, Body={Body}",
+                "Laboratory API request failed. Resource={Resource}, StatusCode={StatusCode}, Body={Body}",
+                resource,
                 (int)response.StatusCode,
                 content);
 
-            throw new LaboratoryApiException($"Falha ao consultar identidade visual. HTTP {(int)response.StatusCode}.");
+            throw new LaboratoryApiException($"Falha ao consultar {errorDescription}. HTTP {(int)response.StatusCode}.");
         }
 
         return JsonDocument.Parse(content);

@@ -64,8 +64,14 @@ Identidade visual:
 GET http://127.0.0.1:8000/api/terminal-visual?hostName=ihpmgaimtotem1
 ```
 
+Contexto e servicos disponiveis:
+
+```text
+GET http://127.0.0.1:8000/api/terminal-context?hostName=ihpmgaimtotem1
+```
+
 Fluxo interno:
 
 1. `POST /digitalRest/autenticacao/token` com Basic Auth.
 2. Cache do `access_token` usando `expires_in`, descontando `TokenCacheSafetySeconds`.
-3. `GET /digitalRest/autoAtendimento/visual?hostName=...` com `Authorization: Bearer <token>`.
+3. Chamadas de autoatendimento com `Authorization: Bearer <token>`.

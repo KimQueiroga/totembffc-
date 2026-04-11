@@ -5,4 +5,6 @@ namespace TotemBff.Services;
 public interface ILaboratoryApiClient
 {
     Task<JsonDocument> GetVisualIdentityAsync(string hostName, CancellationToken cancellationToken);
+
+    Task<JsonDocument> GetTerminalContextAsync(string hostName, CancellationToken cancellationToken);
 }

@@ -80,4 +80,34 @@ app.MapGet("/api/terminal-visual", async (
     }
 });
 
+app.MapGet("/api/terminal-context", async (
+    string hostName,
+    ILaboratoryApiClient laboratoryApi,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(hostName) || !TerminalHostNameValidator.IsValid(hostName))
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["hostName"] = new[] { "hostName deve conter apenas letras, numeros, ponto, hifen ou underline." },
+        });
+    }
+
+    try
+    {
+        using var response = await laboratoryApi.GetTerminalContextAsync(hostName, cancellationToken);
+        var json = response.RootElement.GetRawText();
+
+        return Results.Content(json, "application/json");
+    }
+    catch (LaboratoryApiConfigurationException exception)
+    {
+        return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+    }
+    catch (LaboratoryApiException exception)
+    {
+        return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
 app.Run();
