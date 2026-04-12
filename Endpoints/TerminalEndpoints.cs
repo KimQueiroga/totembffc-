@@ -75,6 +75,40 @@ public static class TerminalEndpoints
             }
         });
 
+        api.MapPut("/client", async (
+            string id,
+            JsonElement payload,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["id"] = new[] { "ID do cliente deve ser informado." },
+                });
+            }
+
+            try
+            {
+                using var response = await laboratoryApi.UpdateClientAsync(
+                    id.Trim(),
+                    payload,
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
         return app;
     }
 

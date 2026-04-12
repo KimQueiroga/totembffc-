@@ -82,6 +82,39 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         return JsonDocument.Parse(content);
     }
 
+    public async Task<JsonDocument> UpdateClientAsync(
+        string clientId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        var token = await GetBearerTokenAsync(environment, cancellationToken);
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/autoAtendimento/cliente?id={Uri.EscapeDataString(clientId)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = new StringContent(payload.GetRawText(), Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Client update request failed. ClientId={ClientId}, StatusCode={StatusCode}, Body={Body}",
+                clientId,
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao atualizar cliente. HTTP {(int)response.StatusCode}.");
+        }
+
+        return string.IsNullOrWhiteSpace(content)
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(content);
+    }
+
     private async Task<JsonDocument> SendAuthorizedGetAsync(
         string hostName,
         string resource,

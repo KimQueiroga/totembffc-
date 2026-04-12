@@ -13,4 +13,9 @@ public interface ILaboratoryApiClient
         string password,
         string birthDate,
         CancellationToken cancellationToken);
+
+    Task<JsonDocument> UpdateClientAsync(
+        string clientId,
+        JsonElement payload,
+        CancellationToken cancellationToken);
 }
