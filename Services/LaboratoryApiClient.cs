@@ -115,6 +115,49 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             : JsonDocument.Parse(content);
     }
 
+    public async Task<JsonDocument> GetPreAttendanceAsync(
+        string clientId,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        ValidateCredentials(environment);
+
+        var serviceToken = await GetServiceTokenAsync(environment, cancellationToken);
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/pscRest/preAtendimento/consultar/";
+        var clientCode = long.TryParse(clientId, out var numericClientId)
+            ? (object)numericClientId
+            : clientId;
+        var payload = JsonSerializer.Serialize(new
+        {
+            codigoCliente = clientCode,
+            validade = "S",
+            atendidos = "N",
+            tipoAtendimento = "P",
+            origem = environment.Username,
+            token = serviceToken,
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Pre-attendance request failed. ClientId={ClientId}, StatusCode={StatusCode}, Body={Body}",
+                clientId,
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao consultar pre atendimento. HTTP {(int)response.StatusCode}.");
+        }
+
+        return JsonDocument.Parse(content);
+    }
+
     private async Task<JsonDocument> SendAuthorizedGetAsync(
         string hostName,
         string resource,
@@ -180,6 +223,63 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         using var payload = JsonDocument.Parse(content);
         var token = ExtractToken(payload.RootElement);
         var ttlSeconds = ExtractTtlSeconds(payload.RootElement);
+
+        _cache.Set(cacheKey, token, TimeSpan.FromSeconds(ttlSeconds));
+
+        return token;
+    }
+
+    private async Task<string> GetServiceTokenAsync(
+        LaboratoryApiEnvironmentOptions environment,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = $"laboratory_api_service_token:{_options.ActiveEnvironment}";
+
+        if (_cache.TryGetValue(cacheKey, out string? cachedToken) && !string.IsNullOrWhiteSpace(cachedToken))
+        {
+            return cachedToken;
+        }
+
+        ValidateCredentials(environment);
+
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/pscRest/geraTokenServico/";
+        var payload = JsonSerializer.Serialize(new
+        {
+            authKey = environment.Username,
+            authPass = environment.Password,
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Service token request failed. StatusCode={StatusCode}, Body={Body}",
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao gerar token de servico. HTTP {(int)response.StatusCode}.");
+        }
+
+        using var responsePayload = JsonDocument.Parse(content);
+        var tokenResult = responsePayload.RootElement.TryGetProperty("TokenResult", out var value)
+            && value.ValueKind == JsonValueKind.Object
+            ? value
+            : responsePayload.RootElement;
+        var token = GetString(tokenResult, "token");
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new LaboratoryApiException("Resposta de token de servico sem token.");
+        }
+
+        var ttlMinutes = GetInt(tokenResult, "tempoExpiracaoMin") ?? 5;
+        var ttlSeconds = Math.Max(30, (ttlMinutes * 60) - _options.TokenCacheSafetySeconds);
 
         _cache.Set(cacheKey, token, TimeSpan.FromSeconds(ttlSeconds));
 

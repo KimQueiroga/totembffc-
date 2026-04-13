@@ -18,4 +18,8 @@ public interface ILaboratoryApiClient
         string clientId,
         JsonElement payload,
         CancellationToken cancellationToken);
+
+    Task<JsonDocument> GetPreAttendanceAsync(
+        string clientId,
+        CancellationToken cancellationToken);
 }
