@@ -115,7 +115,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             : JsonDocument.Parse(content);
     }
 
-    public async Task<JsonDocument> GetPreAttendanceAsync(
+    public async Task<string> GetPreAttendanceAsync(
         string clientId,
         CancellationToken cancellationToken)
     {
@@ -155,7 +155,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             throw new LaboratoryApiException($"Falha ao consultar pre atendimento. HTTP {(int)response.StatusCode}.");
         }
 
-        return JsonDocument.Parse(content);
+        return content;
     }
 
     private async Task<JsonDocument> SendAuthorizedGetAsync(
