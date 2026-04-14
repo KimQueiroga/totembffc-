@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using TotemBff.Configuration;
@@ -9,6 +10,10 @@ namespace TotemBff.Services;
 
 public sealed class LaboratoryApiClient : ILaboratoryApiClient
 {
+    private static readonly Regex UnquotedScalarValueRegex = new(
+        @"(""[^""\\]*(?:\\.[^""\\]*)*""\s*:\s*)(?![""{\[]|null\b|true\b|false\b)([^,}\]]*)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private readonly IMemoryCache _cache;
     private readonly HttpClient _httpClient;
     private readonly ILogger<LaboratoryApiClient> _logger;
@@ -115,7 +120,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             : JsonDocument.Parse(content);
     }
 
-    public async Task<string> GetPreAttendanceAsync(
+    public async Task<JsonDocument> GetPreAttendanceAsync(
         string clientId,
         CancellationToken cancellationToken)
     {
@@ -155,7 +160,75 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             throw new LaboratoryApiException($"Falha ao consultar pre atendimento. HTTP {(int)response.StatusCode}.");
         }
 
-        return content;
+        return ParsePreAttendanceContent(content, clientId);
+    }
+
+    private JsonDocument ParsePreAttendanceContent(string content, string clientId)
+    {
+        try
+        {
+            return JsonDocument.Parse(content);
+        }
+        catch (JsonException exception)
+        {
+            var repairedContent = RepairPreAttendanceJson(content);
+
+            if (repairedContent == content)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Pre-attendance response is invalid JSON. ClientId={ClientId}, BodyLength={BodyLength}",
+                    clientId,
+                    content.Length);
+
+                throw new LaboratoryApiException("Resposta de pre atendimento da API do laboratorio nao e um JSON valido.");
+            }
+
+            try
+            {
+                return JsonDocument.Parse(repairedContent);
+            }
+            catch (JsonException repairedException)
+            {
+                _logger.LogWarning(
+                    repairedException,
+                    "Pre-attendance response is invalid JSON after repair. ClientId={ClientId}, BodyLength={BodyLength}",
+                    clientId,
+                    content.Length);
+
+                throw new LaboratoryApiException("Resposta de pre atendimento da API do laboratorio nao e um JSON valido.");
+            }
+        }
+    }
+
+    private static string RepairPreAttendanceJson(string content)
+    {
+        return UnquotedScalarValueRegex.Replace(content, match =>
+        {
+            var prefix = match.Groups[1].Value;
+            var value = match.Groups[2].Value.Trim();
+
+            if (string.IsNullOrEmpty(value))
+            {
+                return $"{prefix}null";
+            }
+
+            return $"{prefix}{(IsJsonScalar(value) ? value : JsonSerializer.Serialize(value))}";
+        });
+    }
+
+    private static bool IsJsonScalar(string value)
+    {
+        try
+        {
+            using var _ = JsonDocument.Parse($"[{value}]");
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private async Task<JsonDocument> SendAuthorizedGetAsync(

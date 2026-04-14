@@ -124,9 +124,10 @@ public static class TerminalEndpoints
 
             try
             {
-                var json = await laboratoryApi.GetPreAttendanceAsync(
+                using var response = await laboratoryApi.GetPreAttendanceAsync(
                     clientId.Trim(),
                     cancellationToken);
+                var json = response.RootElement.GetRawText();
 
                 return Results.Content(json, "application/json");
             }

@@ -19,7 +19,7 @@ public interface ILaboratoryApiClient
         JsonElement payload,
         CancellationToken cancellationToken);
 
-    Task<string> GetPreAttendanceAsync(
+    Task<JsonDocument> GetPreAttendanceAsync(
         string clientId,
         CancellationToken cancellationToken);
 }
