@@ -13,6 +13,9 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
     private static readonly Regex UnquotedScalarValueRegex = new(
         @"(""[^""\\]*(?:\\.[^""\\]*)*""\s*:\s*)(?![""{\[]|null\b|true\b|false\b)([^,}\]]*)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex TrailingStatusStringRegex = new(
+        @"""status""\s*:\s*""(?:[^""\\]|\\.)*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly JsonDocumentOptions TolerantJsonOptions = new()
     {
         AllowTrailingCommas = true,
@@ -176,7 +179,8 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         }
         catch (JsonException exception)
         {
-            var repairedContent = RepairPreAttendanceJson(content);
+            var repairedContent = RepairTrailingStatusString(
+                RepairPreAttendanceJson(content));
 
             if (repairedContent == content)
             {
@@ -281,6 +285,71 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
             return $"{prefix}{(IsJsonScalar(value) ? value : JsonSerializer.Serialize(value))}";
         });
+    }
+
+    private static string RepairTrailingStatusString(string content)
+    {
+        if (!TrailingStatusStringRegex.IsMatch(content))
+        {
+            return content;
+        }
+
+        var missingContainerClosings = GetMissingContainerClosings(content);
+
+        return $"{content}\"{missingContainerClosings}";
+    }
+
+    private static string GetMissingContainerClosings(string content)
+    {
+        var missingClosings = new Stack<char>();
+        var inString = false;
+        var escaped = false;
+
+        foreach (var character in content)
+        {
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                }
+                else if (character == '\\')
+                {
+                    escaped = true;
+                }
+                else if (character == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            switch (character)
+            {
+                case '"':
+                    inString = true;
+                    break;
+                case '{':
+                    missingClosings.Push('}');
+                    break;
+                case '[':
+                    missingClosings.Push(']');
+                    break;
+                case '}':
+                case ']':
+                    if (missingClosings.Count == 0 ||
+                        missingClosings.Peek() != character)
+                    {
+                        return string.Empty;
+                    }
+
+                    missingClosings.Pop();
+                    break;
+            }
+        }
+
+        return new string(missingClosings.ToArray());
     }
 
     private static bool IsJsonScalar(string value)
