@@ -13,6 +13,11 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
     private static readonly Regex UnquotedScalarValueRegex = new(
         @"(""[^""\\]*(?:\\.[^""\\]*)*""\s*:\s*)(?![""{\[]|null\b|true\b|false\b)([^,}\]]*)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly JsonDocumentOptions TolerantJsonOptions = new()
+    {
+        AllowTrailingCommas = true,
+        CommentHandling = JsonCommentHandling.Skip,
+    };
 
     private readonly IMemoryCache _cache;
     private readonly HttpClient _httpClient;
@@ -167,7 +172,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
     {
         try
         {
-            return JsonDocument.Parse(content);
+            return JsonDocument.Parse(content, TolerantJsonOptions);
         }
         catch (JsonException exception)
         {
@@ -175,30 +180,91 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
             if (repairedContent == content)
             {
+                var details = DescribeJsonException(exception);
+
                 _logger.LogWarning(
                     exception,
-                    "Pre-attendance response is invalid JSON. ClientId={ClientId}, BodyLength={BodyLength}",
+                    "Pre-attendance response is invalid JSON. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}",
                     clientId,
-                    content.Length);
+                    content.Length,
+                    details,
+                    GetJsonErrorSnippet(content, exception));
 
-                throw new LaboratoryApiException("Resposta de pre atendimento da API do laboratorio nao e um JSON valido.");
+                throw new LaboratoryApiException($"Resposta de pre atendimento da API do laboratorio nao e um JSON valido. {details}");
             }
 
             try
             {
-                return JsonDocument.Parse(repairedContent);
+                return JsonDocument.Parse(repairedContent, TolerantJsonOptions);
             }
             catch (JsonException repairedException)
             {
+                var details = DescribeJsonException(repairedException);
+
                 _logger.LogWarning(
                     repairedException,
-                    "Pre-attendance response is invalid JSON after repair. ClientId={ClientId}, BodyLength={BodyLength}",
+                    "Pre-attendance response is invalid JSON after repair. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}",
                     clientId,
-                    content.Length);
+                    content.Length,
+                    details,
+                    GetJsonErrorSnippet(repairedContent, repairedException));
 
-                throw new LaboratoryApiException("Resposta de pre atendimento da API do laboratorio nao e um JSON valido.");
+                throw new LaboratoryApiException($"Resposta de pre atendimento da API do laboratorio nao e um JSON valido. {details}");
             }
         }
+    }
+
+    private static string DescribeJsonException(JsonException exception)
+    {
+        var line = exception.LineNumber is long lineNumber
+            ? lineNumber + 1
+            : 0;
+        var column = exception.BytePositionInLine is long bytePosition
+            ? bytePosition + 1
+            : 0;
+
+        return $"Linha {line}, coluna {column}: {exception.Message}";
+    }
+
+    private static string GetJsonErrorSnippet(string content, JsonException exception)
+    {
+        var index = GetJsonErrorIndex(content, exception) ?? Math.Max(0, content.Length - 240);
+        var start = Math.Max(0, index - 120);
+        var length = Math.Min(content.Length - start, 240);
+
+        return content.Substring(start, length)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
+    private static int? GetJsonErrorIndex(string content, JsonException exception)
+    {
+        if (exception.LineNumber is not long lineNumber ||
+            exception.BytePositionInLine is not long bytePosition)
+        {
+            return null;
+        }
+
+        var currentLine = 0L;
+        var lineStart = 0;
+
+        for (var index = 0; index < content.Length && currentLine < lineNumber; index++)
+        {
+            if (content[index] != '\n')
+            {
+                continue;
+            }
+
+            currentLine++;
+            lineStart = index + 1;
+        }
+
+        if (currentLine != lineNumber)
+        {
+            return null;
+        }
+
+        return Math.Min(content.Length, lineStart + (int)Math.Min(bytePosition, int.MaxValue));
     }
 
     private static string RepairPreAttendanceJson(string content)
@@ -221,7 +287,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
     {
         try
         {
-            using var _ = JsonDocument.Parse($"[{value}]");
+            using var _ = JsonDocument.Parse($"[{value}]", TolerantJsonOptions);
 
             return true;
         }
