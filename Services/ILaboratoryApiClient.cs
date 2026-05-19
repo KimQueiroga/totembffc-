@@ -27,5 +27,7 @@ public interface ILaboratoryApiClient
     Task<JsonDocument> SearchExamsAsync(
         string keyword,
         string? clientToken,
+        string? healthPlan,
+        string? unit,
         CancellationToken cancellationToken);
 }

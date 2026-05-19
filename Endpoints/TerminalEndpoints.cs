@@ -146,6 +146,8 @@ public static class TerminalEndpoints
         api.MapGet("/exams", async (
             string keyword,
             string? clientToken,
+            string? healthPlan,
+            string? unit,
             ILaboratoryApiClient laboratoryApi,
             CancellationToken cancellationToken) =>
         {
@@ -162,6 +164,8 @@ public static class TerminalEndpoints
                 using var response = await laboratoryApi.SearchExamsAsync(
                     keyword.Trim(),
                     clientToken,
+                    healthPlan,
+                    unit,
                     cancellationToken);
                 var json = response.RootElement.GetRawText();
 
@@ -173,7 +177,11 @@ public static class TerminalEndpoints
             }
             catch (LaboratoryApiException exception)
             {
-                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+                var statusCode = exception.StatusCode == StatusCodes.Status400BadRequest
+                    ? StatusCodes.Status400BadRequest
+                    : StatusCodes.Status502BadGateway;
+
+                return Results.Problem(exception.Message, statusCode: statusCode);
             }
         });
 

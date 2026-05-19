@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using TotemBff.Configuration;
@@ -178,6 +179,8 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
     public async Task<JsonDocument> SearchExamsAsync(
         string keyword,
         string? clientToken,
+        string? healthPlan,
+        string? unit,
         CancellationToken cancellationToken)
     {
         var environment = GetActiveEnvironment();
@@ -186,7 +189,13 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         var apiToken = string.IsNullOrWhiteSpace(clientToken)
             ? await GetServiceTokenAsync(environment, cancellationToken)
             : clientToken;
-        var url = $"{environment.BaseUrl.TrimEnd('/')}/attendanceRest/v1/basic/exams?keyword={Uri.EscapeDataString(keyword)}";
+
+        var queryHealthPlan = string.IsNullOrWhiteSpace(healthPlan)
+            ? "UNREG"
+            : healthPlan.Trim();
+        var queryUnit = string.IsNullOrWhiteSpace(unit) ? "1" : unit.Trim();
+
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/attendanceRest/v1/basic/exams?keyword={Uri.EscapeDataString(keyword)}&healthPlan={Uri.EscapeDataString(queryHealthPlan)}&unit={Uri.EscapeDataString(queryUnit)}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -196,11 +205,27 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
+        if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            _logger.LogWarning(
+                "Exam search request returned 400. Keyword={Keyword}, HealthPlan={HealthPlan}, Unit={Unit}, Body={Body}",
+                keyword,
+                queryHealthPlan,
+                queryUnit,
+                content);
+
+            throw new LaboratoryApiException(
+                $"Falha ao consultar exames. HTTP 400. {ExtractExamSearchErrorMessage(content)}",
+                StatusCodes.Status400BadRequest);
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning(
-                "Exam search request failed. Keyword={Keyword}, StatusCode={StatusCode}, Body={Body}",
+                "Exam search request failed. Keyword={Keyword}, HealthPlan={HealthPlan}, Unit={Unit}, StatusCode={StatusCode}, Body={Body}",
                 keyword,
+                queryHealthPlan,
+                queryUnit,
                 (int)response.StatusCode,
                 content);
 
@@ -208,6 +233,32 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         }
 
         return JsonDocument.Parse(content);
+    }
+
+    private static string ExtractExamSearchErrorMessage(string content)
+    {
+        try
+        {
+            var jsonStart = content.IndexOf('{');
+            if (jsonStart >= 0)
+            {
+                var jsonBody = content.Substring(jsonStart);
+                using var document = JsonDocument.Parse(jsonBody);
+                if (document.RootElement.TryGetProperty("error", out var errorElement) &&
+                    errorElement.ValueKind == JsonValueKind.Object &&
+                    errorElement.TryGetProperty("message", out var messageElement) &&
+                    messageElement.ValueKind == JsonValueKind.String)
+                {
+                    return messageElement.GetString() ?? string.Empty;
+                }
+            }
+        }
+        catch
+        {
+            // ignore parse failures
+        }
+
+        return content;
     }
 
     private JsonDocument ParsePreAttendanceContent(string content, string clientId)
