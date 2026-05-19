@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -184,40 +185,69 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         {
             var repairedContent = RepairTrailingStatusString(
                 RepairPreAttendanceJson(content));
+            var parseExceptions = new List<(string Content, JsonException Exception)>();
 
-            if (repairedContent == content)
+            if (repairedContent != content)
             {
-                var details = DescribeJsonException(exception);
-
-                _logger.LogWarning(
-                    exception,
-                    "Pre-attendance response is invalid JSON. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}",
-                    clientId,
-                    content.Length,
-                    details,
-                    GetJsonErrorSnippet(content, exception));
-
-                throw new LaboratoryApiException($"Resposta de pre atendimento da API do laboratorio nao e um JSON valido. {details}");
+                try
+                {
+                    return JsonDocument.Parse(repairedContent, TolerantJsonOptions);
+                }
+                catch (JsonException repairedException)
+                {
+                    parseExceptions.Add((repairedContent, repairedException));
+                }
             }
 
-            try
+            var trimmedContent = TrimToLastBalancedJson(content);
+            if (trimmedContent != content)
             {
-                return JsonDocument.Parse(repairedContent, TolerantJsonOptions);
+                try
+                {
+                    return JsonDocument.Parse(trimmedContent, TolerantJsonOptions);
+                }
+                catch (JsonException trimmedException)
+                {
+                    parseExceptions.Add((trimmedContent, trimmedException));
+                }
             }
-            catch (JsonException repairedException)
+
+            var details = DescribeJsonException(exception);
+            _logger.LogWarning(
+                exception,
+                "Pre-attendance response is invalid JSON. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}",
+                clientId,
+                content.Length,
+                details,
+                GetJsonErrorSnippet(content, exception));
+
+            if (parseExceptions.Count == 1)
             {
-                var details = DescribeJsonException(repairedException);
+                var repairedException = parseExceptions[0].Exception;
+                var repairedDetails = DescribeJsonException(repairedException);
 
                 _logger.LogWarning(
                     repairedException,
-                    "Pre-attendance response is invalid JSON after repair. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}",
+                    "Pre-attendance response is invalid JSON after repair/trim. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}",
                     clientId,
                     content.Length,
-                    details,
-                    GetJsonErrorSnippet(repairedContent, repairedException));
-
-                throw new LaboratoryApiException($"Resposta de pre atendimento da API do laboratorio nao e um JSON valido. {details}");
+                    repairedDetails,
+                    GetJsonErrorSnippet(parseExceptions[0].Content, repairedException));
             }
+            else if (parseExceptions.Count > 1)
+            {
+                var first = parseExceptions[0];
+                var second = parseExceptions[1];
+                _logger.LogWarning(
+                    second.Exception,
+                    "Pre-attendance response is invalid JSON after repair and trim. ClientId={ClientId}, BodyLength={BodyLength}, FirstError={FirstError}, SecondError={SecondError}",
+                    clientId,
+                    content.Length,
+                    DescribeJsonException(first.Exception),
+                    DescribeJsonException(second.Exception));
+            }
+
+            throw new LaboratoryApiException($"Resposta de pre atendimento da API do laboratorio nao e um JSON valido. {details}");
         }
     }
 
