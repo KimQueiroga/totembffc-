@@ -111,6 +111,7 @@ public static class TerminalEndpoints
 
         api.MapGet("/pre-attendance", async (
             string clientId,
+            string? clientToken,
             ILaboratoryApiClient laboratoryApi,
             CancellationToken cancellationToken) =>
         {
@@ -126,6 +127,7 @@ public static class TerminalEndpoints
             {
                 using var response = await laboratoryApi.GetPreAttendanceAsync(
                     clientId.Trim(),
+                    clientToken,
                     cancellationToken);
                 var json = response.RootElement.GetRawText();
 

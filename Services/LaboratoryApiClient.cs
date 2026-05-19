@@ -130,12 +130,15 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
     public async Task<JsonDocument> GetPreAttendanceAsync(
         string clientId,
+        string? clientToken,
         CancellationToken cancellationToken)
     {
         var environment = GetActiveEnvironment();
         ValidateCredentials(environment);
 
-        var serviceToken = await GetServiceTokenAsync(environment, cancellationToken);
+        var apiToken = string.IsNullOrWhiteSpace(clientToken)
+            ? await GetServiceTokenAsync(environment, cancellationToken)
+            : clientToken;
         var url = $"{environment.BaseUrl.TrimEnd('/')}/pscRest/preAtendimento/consultar/";
         var clientCode = long.TryParse(clientId, out var numericClientId)
             ? (object)numericClientId
@@ -147,7 +150,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             atendidos = "N",
             tipoAtendimento = "P",
             origem = environment.Username,
-            token = serviceToken,
+            token = apiToken,
         });
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
