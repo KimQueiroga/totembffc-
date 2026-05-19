@@ -212,6 +212,18 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
                 }
             }
 
+            if (TryAppendMissingContainerClosings(content, out var appendedContent) && appendedContent != content)
+            {
+                try
+                {
+                    return JsonDocument.Parse(appendedContent, TolerantJsonOptions);
+                }
+                catch (JsonException appendedException)
+                {
+                    parseExceptions.Add((appendedContent, appendedException));
+                }
+            }
+
             if (TryExtractFirstBalancedJson(content, out var extractedContent) && extractedContent != trimmedContent)
             {
                 try
@@ -509,6 +521,20 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
         var length = Math.Min(MaxLength, content.Length);
         return content.Substring(content.Length - length).Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
+    private static bool TryAppendMissingContainerClosings(string content, out string json)
+    {
+        var missingClosings = GetMissingContainerClosings(content);
+
+        if (string.IsNullOrEmpty(missingClosings))
+        {
+            json = string.Empty;
+            return false;
+        }
+
+        json = content + missingClosings;
+        return true;
     }
 
     private static string GetMissingContainerClosings(string content)
