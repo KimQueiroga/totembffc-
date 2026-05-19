@@ -276,7 +276,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
     private static string RepairPreAttendanceJson(string content)
     {
-        return UnquotedScalarValueRegex.Replace(content, match =>
+        var repaired = UnquotedScalarValueRegex.Replace(content, match =>
         {
             var prefix = match.Groups[1].Value;
             var value = match.Groups[2].Value.Trim();
@@ -288,6 +288,8 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
             return $"{prefix}{(IsJsonScalar(value) ? value : JsonSerializer.Serialize(value))}";
         });
+
+        return TrimToLastBalancedJson(repaired);
     }
 
     private static string RepairTrailingStatusString(string content)
@@ -300,6 +302,74 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         var missingContainerClosings = GetMissingContainerClosings(content);
 
         return $"{content}\"{missingContainerClosings}";
+    }
+
+    private static string TrimToLastBalancedJson(string content)
+    {
+        var inString = false;
+        var escaped = false;
+        var stack = new Stack<char>();
+        var lastBalancedIndex = -1;
+
+        for (var index = 0; index < content.Length; index++)
+        {
+            var character = content[index];
+
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                }
+                else if (character == '\\')
+                {
+                    escaped = true;
+                }
+                else if (character == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (character == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (character == '{')
+            {
+                stack.Push('}');
+                continue;
+            }
+
+            if (character == '[')
+            {
+                stack.Push(']');
+                continue;
+            }
+
+            if (character == '}' || character == ']')
+            {
+                if (stack.Count > 0 && stack.Peek() == character)
+                {
+                    stack.Pop();
+                    if (stack.Count == 0)
+                    {
+                        lastBalancedIndex = index;
+                    }
+                }
+            }
+        }
+
+        if (lastBalancedIndex >= 0 && lastBalancedIndex < content.Length - 1)
+        {
+            return content.Substring(0, lastBalancedIndex + 1);
+        }
+
+        return content;
     }
 
     private static string GetMissingContainerClosings(string content)
