@@ -212,14 +212,27 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
                 }
             }
 
+            if (TryExtractFirstBalancedJson(content, out var extractedContent) && extractedContent != trimmedContent)
+            {
+                try
+                {
+                    return JsonDocument.Parse(extractedContent, TolerantJsonOptions);
+                }
+                catch (JsonException extractedException)
+                {
+                    parseExceptions.Add((extractedContent, extractedException));
+                }
+            }
+
             var details = DescribeJsonException(exception);
             _logger.LogWarning(
                 exception,
-                "Pre-attendance response is invalid JSON. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}",
+                "Pre-attendance response is invalid JSON. ClientId={ClientId}, BodyLength={BodyLength}, Error={Error}, Snippet={Snippet}, Tail={Tail}",
                 clientId,
                 content.Length,
                 details,
-                GetJsonErrorSnippet(content, exception));
+                GetJsonErrorSnippet(content, exception),
+                GetJsonEndSnippet(content));
 
             if (parseExceptions.Count == 1)
             {
@@ -400,6 +413,102 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         }
 
         return content;
+    }
+
+    private static bool TryExtractFirstBalancedJson(string content, out string json)
+    {
+        var inString = false;
+        var escaped = false;
+        var stack = new Stack<char>();
+        var startIndex = -1;
+        var lastBalancedIndex = -1;
+
+        for (var index = 0; index < content.Length; index++)
+        {
+            var character = content[index];
+
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                }
+                else if (character == '\\')
+                {
+                    escaped = true;
+                }
+                else if (character == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (character == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (startIndex < 0)
+            {
+                if (character == '{' || character == '[')
+                {
+                    startIndex = index;
+                    stack.Push(character == '{' ? '}' : ']');
+                }
+
+                continue;
+            }
+
+            if (character == '{')
+            {
+                stack.Push('}');
+                continue;
+            }
+
+            if (character == '[')
+            {
+                stack.Push(']');
+                continue;
+            }
+
+            if (character == '}' || character == ']')
+            {
+                if (stack.Count > 0 && stack.Peek() == character)
+                {
+                    stack.Pop();
+                    if (stack.Count == 0)
+                    {
+                        lastBalancedIndex = index;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (startIndex >= 0 && lastBalancedIndex >= startIndex)
+        {
+            json = content.Substring(startIndex, lastBalancedIndex - startIndex + 1);
+            return true;
+        }
+
+        json = string.Empty;
+        return false;
+    }
+
+    private static string GetJsonEndSnippet(string content)
+    {
+        const int MaxLength = 120;
+
+        if (string.IsNullOrEmpty(content))
+        {
+            return string.Empty;
+        }
+
+        var length = Math.Min(MaxLength, content.Length);
+        return content.Substring(content.Length - length).Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
     private static string GetMissingContainerClosings(string content)
