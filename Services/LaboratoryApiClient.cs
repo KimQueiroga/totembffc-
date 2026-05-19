@@ -175,6 +175,41 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         return ParsePreAttendanceContent(content, clientId);
     }
 
+    public async Task<JsonDocument> SearchExamsAsync(
+        string keyword,
+        string? clientToken,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        ValidateCredentials(environment);
+
+        var apiToken = string.IsNullOrWhiteSpace(clientToken)
+            ? await GetServiceTokenAsync(environment, cancellationToken)
+            : clientToken;
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/attendanceRest/v1/basic/exams?keyword={Uri.EscapeDataString(keyword)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Add("token", apiToken);
+        request.Headers.Add("origem", environment.Username);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Exam search request failed. Keyword={Keyword}, StatusCode={StatusCode}, Body={Body}",
+                keyword,
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao consultar exames. HTTP {(int)response.StatusCode}.");
+        }
+
+        return JsonDocument.Parse(content);
+    }
+
     private JsonDocument ParsePreAttendanceContent(string content, string clientId)
     {
         try

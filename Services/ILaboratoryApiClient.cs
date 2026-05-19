@@ -23,4 +23,9 @@ public interface ILaboratoryApiClient
         string clientId,
         string? clientToken,
         CancellationToken cancellationToken);
+
+    Task<JsonDocument> SearchExamsAsync(
+        string keyword,
+        string? clientToken,
+        CancellationToken cancellationToken);
 }

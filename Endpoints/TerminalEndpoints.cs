@@ -143,6 +143,40 @@ public static class TerminalEndpoints
             }
         });
 
+        api.MapGet("/exams", async (
+            string keyword,
+            string? clientToken,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(keyword))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["keyword"] = new[] { "Keyword deve ser informado." },
+                });
+            }
+
+            try
+            {
+                using var response = await laboratoryApi.SearchExamsAsync(
+                    keyword.Trim(),
+                    clientToken,
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
         return app;
     }
 
