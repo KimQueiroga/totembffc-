@@ -13,6 +13,29 @@ public static class TerminalEndpoints
     {
         var api = app.MapGroup("/api");
 
+        app.MapGet("/dev-prints/{fileName}", (string fileName) =>
+        {
+            if (string.IsNullOrWhiteSpace(fileName) ||
+                fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+                !fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound();
+            }
+
+            var filePath = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                "wwwroot",
+                "dev-prints",
+                fileName);
+
+            if (!File.Exists(filePath))
+            {
+                return Results.NotFound();
+            }
+
+            return Results.File(filePath, "application/pdf", fileName);
+        });
+
         api.MapGet("/health", (IOptions<LaboratoryApiOptions> options) => Results.Ok(new
         {
             status = "ok",
