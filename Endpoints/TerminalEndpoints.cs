@@ -75,6 +75,64 @@ public static class TerminalEndpoints
             }
         });
 
+        api.MapGet("/client", async (
+            string? cpf,
+            string? carteirinha,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(cpf) && string.IsNullOrWhiteSpace(carteirinha))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["client"] = new[] { "CPF ou carteirinha deve ser informado." },
+                });
+            }
+
+            try
+            {
+                using var response = await laboratoryApi.GetClientAsync(
+                    cpf?.Trim(),
+                    carteirinha?.Trim(),
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
+        api.MapPost("/client", async (
+            JsonElement payload,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                using var response = await laboratoryApi.CreateClientAsync(
+                    payload,
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
         api.MapPut("/client", async (
             string id,
             JsonElement payload,

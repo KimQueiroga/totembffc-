@@ -66,7 +66,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         CancellationToken cancellationToken)
     {
         var environment = GetActiveEnvironment();
-        var token = await GetBearerTokenAsync(environment, cancellationToken);
+        var token = await GetLegacyBearerTokenAsync(environment, cancellationToken);
         var url = $"{environment.BaseUrl.TrimEnd('/')}/mobileRest/Cliente/Token/";
         var payload = JsonSerializer.Serialize(new
         {
@@ -95,6 +95,78 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         }
 
         return JsonDocument.Parse(content);
+    }
+
+    public async Task<JsonDocument> GetClientAsync(
+        string? cpf,
+        string? cardNumber,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        var token = await GetBearerTokenAsync(environment, cancellationToken);
+        var queryParameters = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(cpf))
+        {
+            queryParameters.Add($"cpf={Uri.EscapeDataString(cpf)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(cardNumber))
+        {
+            queryParameters.Add($"carteirinha={Uri.EscapeDataString(cardNumber)}");
+        }
+
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/autoAtendimento/cliente?{string.Join("&", queryParameters)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Client query request failed. StatusCode={StatusCode}, Body={Body}",
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao consultar cliente. HTTP {(int)response.StatusCode}.");
+        }
+
+        return JsonDocument.Parse(content);
+    }
+
+    public async Task<JsonDocument> CreateClientAsync(
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        var token = await GetBearerTokenAsync(environment, cancellationToken);
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/autoAtendimento/cliente";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = new StringContent(payload.GetRawText(), Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Client create request failed. StatusCode={StatusCode}, Body={Body}",
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao cadastrar cliente. HTTP {(int)response.StatusCode}.");
+        }
+
+        return string.IsNullOrWhiteSpace(content)
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(content);
     }
 
     public async Task<JsonDocument> UpdateClientAsync(
@@ -732,8 +804,8 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
         ValidateCredentials(environment);
 
-        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/autenticacao/token";
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/agendamentoExterno/oauth/token/";
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.Authorization = new AuthenticationHeaderValue(
             "Basic",
@@ -750,6 +822,46 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
                 content);
 
             throw new LaboratoryApiException($"Falha ao autenticar na API do laboratorio. HTTP {(int)response.StatusCode}.");
+        }
+
+        using var payload = JsonDocument.Parse(content);
+        var token = ExtractToken(payload.RootElement);
+        var ttlSeconds = ExtractTtlSeconds(payload.RootElement);
+
+        _cache.Set(cacheKey, token, TimeSpan.FromSeconds(ttlSeconds));
+
+        return token;
+    }
+
+    private async Task<string> GetLegacyBearerTokenAsync(LaboratoryApiEnvironmentOptions environment, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"laboratory_api_legacy_token:{_options.ActiveEnvironment}";
+
+        if (_cache.TryGetValue(cacheKey, out string? cachedToken) && !string.IsNullOrWhiteSpace(cachedToken))
+        {
+            return cachedToken;
+        }
+
+        ValidateCredentials(environment);
+
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/digitalRest/autenticacao/token";
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Basic",
+            Convert.ToBase64String(Encoding.UTF8.GetBytes($"{environment.Username}:{environment.Password}")));
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Legacy token request failed. StatusCode={StatusCode}, Body={Body}",
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao autenticar na API legada do laboratorio. HTTP {(int)response.StatusCode}.");
         }
 
         using var payload = JsonDocument.Parse(content);

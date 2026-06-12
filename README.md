@@ -12,7 +12,7 @@ As URLs ficam em `appsettings.json`:
 
 - `Dev`: `https://services-hml.grupopardini.com.br/csp`
 - `Homol`: `https://services-hml.grupopardini.com.br/csp`
-- `Prod`: `https://services-prd.grupopardini.com.br/csp`
+- `Prod`: `https://servicesmob-prd.grupopardini.com.br/csp`
 
 Credenciais locais devem ficar em `appsettings.Local.json`, que e ignorado pelo Git. Use `appsettings.Local.example.json` como referencia.
 
@@ -70,8 +70,35 @@ Contexto e servicos disponiveis:
 GET http://127.0.0.1:8000/api/terminal-context?hostName=ihpmgaimtotem1
 ```
 
+Autenticar cliente por CPF, senha e data de nascimento:
+
+```text
+POST http://127.0.0.1:8000/api/client-token
+```
+
+Consultar cliente:
+
+```text
+GET http://127.0.0.1:8000/api/client?cpf=30488918030
+GET http://127.0.0.1:8000/api/client?carteirinha=123456
+GET http://127.0.0.1:8000/api/client?cpf=30488918030&carteirinha=123456
+```
+
+Cadastrar cliente:
+
+```text
+POST http://127.0.0.1:8000/api/client
+```
+
+Editar cliente:
+
+```text
+PUT http://127.0.0.1:8000/api/client?id=8066747022
+```
+
 Fluxo interno:
 
-1. `POST /digitalRest/autenticacao/token` com Basic Auth.
-2. Cache do `access_token` usando `expires_in`, descontando `TokenCacheSafetySeconds`.
-3. Chamadas de autoatendimento com `Authorization: Bearer <token>`.
+1. Autenticacao de cliente por CPF/senha/data usa `POST /mobileRest/Cliente/Token/`.
+2. Consulta, cadastro e edicao de cliente usam `/digitalRest/autoAtendimento/cliente`.
+3. Chamadas de AutoAtendimento usam token de `GET /digitalRest/agendamentoExterno/oauth/token/`.
+4. O token e mantido em cache usando `expires_in`, descontando `TokenCacheSafetySeconds`.
