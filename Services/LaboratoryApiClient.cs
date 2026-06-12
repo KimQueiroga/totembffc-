@@ -65,16 +65,50 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         string birthDate,
         CancellationToken cancellationToken)
     {
+        return await AuthenticateClientWithLegacyTokenAsync(
+            authKey: cpf,
+            password: password,
+            authKeyType: "1",
+            birthDate: birthDate,
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task<JsonDocument> AuthenticateClientByCodeAsync(
+        string clientCode,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        return await AuthenticateClientWithLegacyTokenAsync(
+            authKey: clientCode,
+            password: password,
+            authKeyType: "2",
+            birthDate: null,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<JsonDocument> AuthenticateClientWithLegacyTokenAsync(
+        string authKey,
+        string password,
+        string authKeyType,
+        string? birthDate,
+        CancellationToken cancellationToken)
+    {
         var environment = GetActiveEnvironment();
         var token = await GetLegacyBearerTokenAsync(environment, cancellationToken);
         var url = $"{environment.BaseUrl.TrimEnd('/')}/mobileRest/Cliente/Token/";
-        var payload = JsonSerializer.Serialize(new
+        var payloadValues = new Dictionary<string, object?>
         {
-            authKey = cpf,
-            authPass = password,
-            authKeyType = "1",
-            birthDate,
-        });
+            ["authKey"] = authKey,
+            ["authPass"] = password,
+            ["authKeyType"] = authKeyType,
+        };
+
+        if (!string.IsNullOrWhiteSpace(birthDate))
+        {
+            payloadValues["birthDate"] = birthDate;
+        }
+
+        var payload = JsonSerializer.Serialize(payloadValues);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));

@@ -56,11 +56,16 @@ public static class TerminalEndpoints
 
             try
             {
-                using var response = await laboratoryApi.AuthenticateClientAsync(
-                    request.Cpf.Trim(),
-                    request.Password,
-                    request.BirthDate.Trim(),
-                    cancellationToken);
+                using var response = string.IsNullOrWhiteSpace(request.ClientCode)
+                    ? await laboratoryApi.AuthenticateClientAsync(
+                        request.Cpf?.Trim() ?? string.Empty,
+                        request.Password,
+                        request.BirthDate?.Trim() ?? string.Empty,
+                        cancellationToken)
+                    : await laboratoryApi.AuthenticateClientByCodeAsync(
+                        request.ClientCode.Trim(),
+                        request.Password,
+                        cancellationToken);
                 var json = response.RootElement.GetRawText();
 
                 return Results.Content(json, "application/json");
@@ -279,10 +284,17 @@ public static class TerminalEndpoints
     private static Dictionary<string, string[]> ValidateClientTokenRequest(ClientTokenRequest request)
     {
         var errors = new Dictionary<string, string[]>();
+        var hasCpf = !string.IsNullOrWhiteSpace(request.Cpf);
+        var hasClientCode = !string.IsNullOrWhiteSpace(request.ClientCode);
 
-        if (string.IsNullOrWhiteSpace(request.Cpf))
+        if (!hasCpf && !hasClientCode)
         {
-            errors["cpf"] = new[] { "CPF deve ser informado." };
+            errors["client"] = new[] { "CPF ou codigo do cliente deve ser informado." };
+        }
+
+        if (hasCpf && hasClientCode)
+        {
+            errors["client"] = new[] { "Informe CPF ou codigo do cliente, nao ambos." };
         }
 
         if (string.IsNullOrWhiteSpace(request.Password))
@@ -290,7 +302,7 @@ public static class TerminalEndpoints
             errors["password"] = new[] { "Senha deve ser informada." };
         }
 
-        if (string.IsNullOrWhiteSpace(request.BirthDate))
+        if (hasCpf && string.IsNullOrWhiteSpace(request.BirthDate))
         {
             errors["birthDate"] = new[] { "Data de nascimento deve ser informada." };
         }
@@ -298,5 +310,5 @@ public static class TerminalEndpoints
         return errors;
     }
 
-    private sealed record ClientTokenRequest(string Cpf, string Password, string BirthDate);
+    private sealed record ClientTokenRequest(string? Cpf, string Password, string? BirthDate, string? ClientCode);
 }

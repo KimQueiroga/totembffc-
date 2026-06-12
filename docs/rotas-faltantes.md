@@ -9,5 +9,19 @@ novo a definir.
   - Status: pendente.
   - Situacao atual: o botao existe no app, mas ainda nao executa consulta.
   - Observacao: nao foi identificada rota nova na documentacao de
-    AutoAtendimento. Confirmar rota legada usada pelo totem Java antes de
-    criar o endpoint novo no BFF.
+    AutoAtendimento.
+  - Verificacao no fonte antigo `passelivre.zip`: a rotina encontrada com
+    codigo de barras esta ligada a impressao/consulta de resultado, nao ao
+    pre-atendimento. O fluxo antigo usa `ResultadoPedidoBean`:
+    `abrirDialgImpressaoPorCodigoBarra`, `imprimirRestultadoPorCodigoBarra`
+    e `exibirDetalhesPorCodigoBarra`.
+  - Endpoints legados referenciados por chave:
+    `ENDPOINT_IHP_PEDIDO_ID_DETALHES` para consultar detalhes do pedido e
+    `ENDPOINT_IHP_IMPRESSAO_RESULTADO` para imprimir o resultado.
+  - Chaves encontradas no `config.txt` legado:
+    `ENDPOINT_IHP_PEDIDO_ID_DETALHES_TOTEM=https://services-hml.grupopardini.com.br/csp/totemRest/PedidoDetalhes/?id=`
+    e
+    `ENDPOINT_IHP_IMPRESSAO_RESULTADO_TOTEM=https://services-hml.grupopardini.com.br/csp/totemRest/impressao/resultado/`.
+  - Regra do codigo lido no legado: 14 caracteres, iniciando com `01` e
+    terminando com `00`. O codigo e convertido para `unidade||pedido` na
+    consulta de detalhe e para `unidade||****||pedido` na impressao.

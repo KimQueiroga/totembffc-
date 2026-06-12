@@ -14,6 +14,11 @@ public interface ILaboratoryApiClient
         string birthDate,
         CancellationToken cancellationToken);
 
+    Task<JsonDocument> AuthenticateClientByCodeAsync(
+        string clientCode,
+        string password,
+        CancellationToken cancellationToken);
+
     Task<JsonDocument> GetClientAsync(
         string? cpf,
         string? cardNumber,
