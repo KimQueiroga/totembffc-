@@ -248,6 +248,43 @@ public static class TerminalEndpoints
             }
         });
 
+        api.MapPost("/barcode-result/print", async (
+            BarcodeResultPrintRequest request,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Barcode))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["barcode"] = new[] { "Codigo de barras deve ser informado." },
+                });
+            }
+
+            try
+            {
+                using var response = await laboratoryApi.PrintResultByBarcodeAsync(
+                    request.Barcode.Trim(),
+                    request.Printer?.Trim(),
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                var statusCode = exception.StatusCode == StatusCodes.Status400BadRequest
+                    ? StatusCodes.Status400BadRequest
+                    : StatusCodes.Status502BadGateway;
+
+                return Results.Problem(exception.Message, statusCode: statusCode);
+            }
+        });
+
         return app;
     }
 
@@ -311,4 +348,6 @@ public static class TerminalEndpoints
     }
 
     private sealed record ClientTokenRequest(string? Cpf, string Password, string? BirthDate, string? ClientCode);
+
+    private sealed record BarcodeResultPrintRequest(string Barcode, string? Printer);
 }

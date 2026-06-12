@@ -341,6 +341,171 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         return JsonDocument.Parse(content);
     }
 
+    public async Task<JsonDocument> PrintResultByBarcodeAsync(
+        string barcode,
+        string? printer,
+        CancellationToken cancellationToken)
+    {
+        var normalizedBarcode = Regex.Replace(barcode, @"\D", string.Empty);
+
+        if (!IsValidResultBarcode(normalizedBarcode))
+        {
+            throw new LaboratoryApiException("Codigo de barras invalido. A etiqueta deve ter 14 digitos, iniciar com 01 e terminar com 00.", StatusCodes.Status400BadRequest);
+        }
+
+        var environment = GetActiveEnvironment();
+        ValidateCredentials(environment);
+
+        var apiToken = await GetServiceTokenAsync(environment, cancellationToken);
+        var detailsId = ToBarcodeOrderDetailsId(normalizedBarcode);
+        using var details = await GetBarcodeOrderDetailsAsync(environment, detailsId, apiToken, cancellationToken);
+        var detailsRoot = UnwrapResult(details.RootElement, "PedidoDetalheResult");
+        var orderStatus = GetInt(detailsRoot, "statusExamesPedido");
+        var clientCode = GetString(detailsRoot, "cliente", "codigoCliente")
+            ?? GetString(detailsRoot, "cliente", "id")
+            ?? string.Empty;
+
+        if (orderStatus != 1)
+        {
+            var pendingMessage = GetString(detailsRoot, "mensagem")
+                ?? "Pedido localizado, mas ainda existem exames nao liberados para impressao.";
+
+            return JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                barcode = normalizedBarcode,
+                printed = false,
+                released = false,
+                message = pendingMessage,
+                orderStatus,
+                clientCode,
+            }));
+        }
+
+        using var printResult = await PrintBarcodeResultAsync(
+            environment,
+            normalizedBarcode,
+            apiToken,
+            printer,
+            cancellationToken);
+        var printRoot = UnwrapResult(printResult.RootElement, "ResultadoResult");
+        var status = GetString(printRoot, "status");
+        var message = GetString(printRoot, "mensagem")
+            ?? (status == "0" ? "Resultado enviado para impressao." : "Falha ao imprimir resultado.");
+        var printed = status == "0";
+        var printClientCode = GetString(printRoot, "codigoCliente") ?? clientCode;
+
+        return JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            barcode = normalizedBarcode,
+            printed,
+            released = true,
+            message,
+            orderStatus,
+            clientCode = printClientCode,
+            status,
+        }));
+    }
+
+    private async Task<JsonDocument> GetBarcodeOrderDetailsAsync(
+        LaboratoryApiEnvironmentOptions environment,
+        string detailsId,
+        string token,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/totemRest/PedidoDetalhes/?id={Uri.EscapeDataString(detailsId)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Add("token", token);
+        request.Headers.Add("origem", environment.Username);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Barcode order details request failed. DetailsId={DetailsId}, StatusCode={StatusCode}, Body={Body}",
+                detailsId,
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao consultar pedido pelo codigo de barras. HTTP {(int)response.StatusCode}.");
+        }
+
+        return JsonDocument.Parse(content, TolerantJsonOptions);
+    }
+
+    private async Task<JsonDocument> PrintBarcodeResultAsync(
+        LaboratoryApiEnvironmentOptions environment,
+        string barcode,
+        string token,
+        string? printer,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/totemRest/impressao/resultado/";
+        var payload = JsonSerializer.Serialize(new
+        {
+            docId = ToBarcodePrintDocumentId(barcode),
+            impressora = printer ?? string.Empty,
+            frenteEVerso = "1",
+            origem = environment.Username,
+            token,
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Barcode result print request failed. Barcode={Barcode}, StatusCode={StatusCode}, Body={Body}",
+                barcode,
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao imprimir resultado pelo codigo de barras. HTTP {(int)response.StatusCode}.");
+        }
+
+        return JsonDocument.Parse(content, TolerantJsonOptions);
+    }
+
+    private static bool IsValidResultBarcode(string barcode)
+    {
+        return barcode.Length == 14 &&
+            barcode.StartsWith("01", StringComparison.Ordinal) &&
+            barcode.EndsWith("00", StringComparison.Ordinal);
+    }
+
+    private static string ToBarcodeOrderDetailsId(string barcode)
+    {
+        var value = barcode.Substring(2);
+        var unit = value.Substring(0, 3);
+        var order = value.Substring(3, value.Length - 5);
+
+        return $"{unit}||{order}";
+    }
+
+    private static string ToBarcodePrintDocumentId(string barcode)
+    {
+        var value = barcode.Substring(2);
+        var unit = value.Substring(0, 3);
+        var order = value.Substring(3, value.Length - 5);
+
+        return $"{unit}||****||{order}";
+    }
+
+    private static JsonElement UnwrapResult(JsonElement payload, string propertyName)
+    {
+        return payload.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value
+            : payload;
+    }
+
     private static string ExtractExamSearchErrorMessage(string content)
     {
         try
@@ -1019,9 +1184,17 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
     private static string? GetString(JsonElement payload, string propertyName)
     {
-        return payload.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
+        if (!payload.TryGetProperty(propertyName, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.ToString(),
+            _ => null,
+        };
     }
 
     private static string? GetString(JsonElement payload, string parentName, string propertyName)

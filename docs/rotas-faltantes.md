@@ -6,8 +6,11 @@ novo a definir.
 ## Check-in
 
 - Entrada por codigo de barras
-  - Status: pendente.
-  - Situacao atual: o botao existe no app, mas ainda nao executa consulta.
+  - Status: implementado temporariamente com rotas legadas.
+  - Situacao atual: o botao executa o fluxo legado de impressao/consulta de
+    resultado por codigo de barras via BFF. Quando a nova rota for criada,
+    substituir a implementacao do BFF mantendo o app chamando a mesma rota
+    interna, se possivel.
   - Observacao: nao foi identificada rota nova na documentacao de
     AutoAtendimento.
   - Verificacao no fonte antigo `passelivre.zip`: a rotina encontrada com

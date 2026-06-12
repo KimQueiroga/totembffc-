@@ -44,4 +44,9 @@ public interface ILaboratoryApiClient
         string? healthPlan,
         string? unit,
         CancellationToken cancellationToken);
+
+    Task<JsonDocument> PrintResultByBarcodeAsync(
+        string barcode,
+        string? printer,
+        CancellationToken cancellationToken);
 }
