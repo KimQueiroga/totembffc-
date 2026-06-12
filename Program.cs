@@ -43,6 +43,7 @@ builder.Services
 var app = builder.Build();
 
 app.UseCors("FlutterLocal");
+app.UseStaticFiles();
 
 app.MapTerminalEndpoints();
 

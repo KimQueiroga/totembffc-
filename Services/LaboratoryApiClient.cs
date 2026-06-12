@@ -385,6 +385,31 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             }));
         }
 
+        if (ShouldGenerateDevelopmentPrintPdf())
+        {
+            var pdfUrl = CreateDevelopmentPrintPdf(
+                normalizedBarcode,
+                detailsId,
+                ToBarcodePrintDocumentId(normalizedBarcode),
+                printer,
+                clientCode,
+                orderStatus);
+
+            return JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                barcode = normalizedBarcode,
+                printed = true,
+                released = true,
+                pdfGenerated = true,
+                pdfUrl,
+                printer = printer ?? string.Empty,
+                message = $"PDF de impressao gerado para ambiente {_options.ActiveEnvironment}.",
+                orderStatus,
+                clientCode,
+                status = "PDF",
+            }));
+        }
+
         using var printResult = await PrintBarcodeResultAsync(
             environment,
             normalizedBarcode,
@@ -406,6 +431,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             message,
             orderStatus,
             clientCode = printClientCode,
+            printer = printer ?? string.Empty,
             status,
         }));
     }
@@ -522,6 +548,108 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         var order = value.Substring(3, value.Length - 5);
 
         return $"{unit}||****||{order}";
+    }
+
+    private bool ShouldGenerateDevelopmentPrintPdf()
+    {
+        return _options.ActiveEnvironment.Equals("Dev", StringComparison.OrdinalIgnoreCase) ||
+            _options.ActiveEnvironment.Equals("Homol", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string CreateDevelopmentPrintPdf(
+        string barcode,
+        string detailsId,
+        string documentId,
+        string? printer,
+        string clientCode,
+        int? orderStatus)
+    {
+        var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "dev-prints");
+        Directory.CreateDirectory(outputDirectory);
+
+        var fileName = $"resultado-codigo-barras-{barcode}-{DateTimeOffset.Now:yyyyMMddHHmmss}.pdf";
+        var filePath = Path.Combine(outputDirectory, fileName);
+        var lines = new[]
+        {
+            "Simulacao de impressao de resultado",
+            $"Ambiente: {_options.ActiveEnvironment}",
+            $"Codigo de barras: {barcode}",
+            $"Pedido detalhe: {detailsId}",
+            $"Documento impressao: {documentId}",
+            $"Codigo cliente: {clientCode}",
+            $"Status exames pedido: {orderStatus}",
+            $"Impressora configurada: {printer ?? "-"}",
+            $"Gerado em: {DateTimeOffset.Now:dd/MM/yyyy HH:mm:ss}",
+            "Este PDF substitui a chamada de impressao apenas em Dev/Homol.",
+        };
+
+        File.WriteAllBytes(filePath, BuildSimplePdf(lines));
+
+        return $"/dev-prints/{fileName}";
+    }
+
+    private static byte[] BuildSimplePdf(IEnumerable<string> lines)
+    {
+        var textBuilder = new StringBuilder();
+        textBuilder.AppendLine("BT");
+        textBuilder.AppendLine("/F1 14 Tf");
+        textBuilder.AppendLine("50 790 Td");
+
+        foreach (var line in lines)
+        {
+            textBuilder.AppendLine($"({EscapePdfText(line)}) Tj");
+            textBuilder.AppendLine("0 -24 Td");
+        }
+
+        textBuilder.AppendLine("ET");
+        var content = textBuilder.ToString();
+        var contentLength = Encoding.ASCII.GetByteCount(content);
+        var objects = new[]
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            $"<< /Length {contentLength} >>\nstream\n{content}endstream",
+        };
+        var pdf = new StringBuilder();
+        var offsets = new List<int> { 0 };
+
+        pdf.AppendLine("%PDF-1.4");
+
+        for (var index = 0; index < objects.Length; index++)
+        {
+            offsets.Add(Encoding.ASCII.GetByteCount(pdf.ToString()));
+            pdf.AppendLine($"{index + 1} 0 obj");
+            pdf.AppendLine(objects[index]);
+            pdf.AppendLine("endobj");
+        }
+
+        var xrefOffset = Encoding.ASCII.GetByteCount(pdf.ToString());
+        pdf.AppendLine("xref");
+        pdf.AppendLine($"0 {objects.Length + 1}");
+        pdf.AppendLine("0000000000 65535 f ");
+
+        foreach (var offset in offsets.Skip(1))
+        {
+            pdf.AppendLine($"{offset:0000000000} 00000 n ");
+        }
+
+        pdf.AppendLine("trailer");
+        pdf.AppendLine($"<< /Size {objects.Length + 1} /Root 1 0 R >>");
+        pdf.AppendLine("startxref");
+        pdf.AppendLine(xrefOffset.ToString());
+        pdf.AppendLine("%%EOF");
+
+        return Encoding.ASCII.GetBytes(pdf.ToString());
+    }
+
+    private static string EscapePdfText(string value)
+    {
+        return value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("(", "\\(", StringComparison.Ordinal)
+            .Replace(")", "\\)", StringComparison.Ordinal);
     }
 
     private static JsonElement UnwrapResult(JsonElement payload, string propertyName)
