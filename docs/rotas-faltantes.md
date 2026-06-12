@@ -31,3 +31,6 @@ novo a definir.
   - Regra de liberacao: tratar pelo campo `statusExamesPedido`. Quando for
     `1`, seguir para impressao mesmo que a API retorne `error.message`.
     Quando for `0`, nao imprimir e orientar o cliente a procurar um atendente.
+    A rota legada pode responder HTTP 400 mesmo com `statusExamesPedido = 1`,
+    portanto o BFF nao deve decidir pelo status HTTP nessa consulta quando o
+    corpo JSON trouxer esse campo.

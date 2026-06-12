@@ -425,9 +425,30 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        JsonDocument? payload = null;
+
+        try
+        {
+            payload = JsonDocument.Parse(content, TolerantJsonOptions);
+        }
+        catch (JsonException)
+        {
+            payload?.Dispose();
+        }
 
         if (!response.IsSuccessStatusCode)
         {
+            if (payload is not null)
+            {
+                var root = UnwrapResult(payload.RootElement, "PedidoDetalheResult");
+
+                if (GetInt(root, "statusExamesPedido") is not null)
+                {
+                    return payload;
+                }
+            }
+
+            payload?.Dispose();
             _logger.LogWarning(
                 "Barcode order details request failed. DetailsId={DetailsId}, StatusCode={StatusCode}, Body={Body}",
                 detailsId,
@@ -437,7 +458,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             throw new LaboratoryApiException($"Falha ao consultar pedido pelo codigo de barras. HTTP {(int)response.StatusCode}.");
         }
 
-        return JsonDocument.Parse(content, TolerantJsonOptions);
+        return payload ?? JsonDocument.Parse(content, TolerantJsonOptions);
     }
 
     private async Task<JsonDocument> PrintBarcodeResultAsync(
