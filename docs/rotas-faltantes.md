@@ -28,3 +28,6 @@ novo a definir.
   - Regra do codigo lido no legado: 14 caracteres, iniciando com `01` e
     terminando com `00`. O codigo e convertido para `unidade||pedido` na
     consulta de detalhe e para `unidade||****||pedido` na impressao.
+  - Regra de liberacao: tratar pelo campo `statusExamesPedido`. Quando for
+    `1`, seguir para impressao mesmo que a API retorne `error.message`.
+    Quando for `0`, nao imprimir e orientar o cliente a procurar um atendente.

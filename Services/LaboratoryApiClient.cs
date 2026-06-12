@@ -367,8 +367,11 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
         if (orderStatus != 1)
         {
-            var pendingMessage = GetString(detailsRoot, "mensagem")
-                ?? "Pedido localizado, mas ainda existem exames nao liberados para impressao.";
+            var apiMessage = GetString(detailsRoot, "mensagem")
+                ?? GetString(detailsRoot, "error", "message");
+            var pendingMessage = orderStatus == 0
+                ? "Laudo nao liberado. Procure um atendente."
+                : apiMessage ?? "Pedido localizado, mas ainda existem exames nao liberados para impressao.";
 
             return JsonDocument.Parse(JsonSerializer.Serialize(new
             {
@@ -376,6 +379,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
                 printed = false,
                 released = false,
                 message = pendingMessage,
+                apiMessage,
                 orderStatus,
                 clientCode,
             }));
