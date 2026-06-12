@@ -34,7 +34,8 @@ novo a definir.
     A rota legada pode responder HTTP 400 mesmo com `statusExamesPedido = 1`,
     portanto o BFF nao deve decidir pelo status HTTP nessa consulta quando o
     corpo JSON trouxer esse campo.
-  - Em Dev/Homol, apos `statusExamesPedido = 1`, o BFF gera um PDF local em
-    `/dev-prints` e nao chama a rota legada de impressao. Em Prod, segue para
+  - Em Dev e Homol, apos `statusExamesPedido = 1`, o BFF chama a rota legada
     `totemRest/impressao/resultado/` usando a impressora do contexto do
-    terminal.
+    terminal e tambem gera um PDF local em `/dev-prints` registrando se a
+    impressao foi confirmada. Em Prod, somente chama a rota legada de
+    impressao.

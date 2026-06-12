@@ -385,45 +385,63 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             }));
         }
 
-        if (ShouldGenerateDevelopmentPrintPdf())
+        JsonDocument? printResult = null;
+        JsonElement? printRoot = null;
+        string? status = null;
+        string? message = null;
+        var printed = false;
+        var printClientCode = clientCode;
+
+        try
+        {
+            printResult = await PrintBarcodeResultAsync(
+                environment,
+                normalizedBarcode,
+                apiToken,
+                printer,
+                cancellationToken);
+            printRoot = UnwrapResult(printResult.RootElement, "ResultadoResult");
+            status = GetString(printRoot.Value, "status");
+            message = GetString(printRoot.Value, "mensagem")
+                ?? (status == "0" ? "Resultado enviado para impressao." : "Falha ao imprimir resultado.");
+            printed = status == "0";
+            printClientCode = GetString(printRoot.Value, "codigoCliente") ?? clientCode;
+        }
+        catch (LaboratoryApiException exception) when (ShouldGeneratePrintPdf())
+        {
+            status = "PRINT_ERROR";
+            message = exception.Message;
+        }
+
+        if (ShouldGeneratePrintPdf())
         {
             var pdfUrl = CreateDevelopmentPrintPdf(
                 normalizedBarcode,
                 detailsId,
                 ToBarcodePrintDocumentId(normalizedBarcode),
                 printer,
-                clientCode,
-                orderStatus);
+                printClientCode,
+                orderStatus,
+                printed,
+                message ?? string.Empty);
+            printResult?.Dispose();
 
             return JsonDocument.Parse(JsonSerializer.Serialize(new
             {
                 barcode = normalizedBarcode,
-                printed = true,
+                printed,
                 released = true,
                 pdfGenerated = true,
                 pdfUrl,
                 printer = printer ?? string.Empty,
-                message = $"PDF de impressao gerado para ambiente {_options.ActiveEnvironment}.",
+                message = $"{message ?? "Processamento finalizado."} PDF gerado para ambiente {_options.ActiveEnvironment}.",
                 orderStatus,
-                clientCode,
-                status = "PDF",
+                clientCode = printClientCode,
+                status,
             }));
         }
 
-        using var printResult = await PrintBarcodeResultAsync(
-            environment,
-            normalizedBarcode,
-            apiToken,
-            printer,
-            cancellationToken);
-        var printRoot = UnwrapResult(printResult.RootElement, "ResultadoResult");
-        var status = GetString(printRoot, "status");
-        var message = GetString(printRoot, "mensagem")
-            ?? (status == "0" ? "Resultado enviado para impressao." : "Falha ao imprimir resultado.");
-        var printed = status == "0";
-        var printClientCode = GetString(printRoot, "codigoCliente") ?? clientCode;
-
-        return JsonDocument.Parse(JsonSerializer.Serialize(new
+        var result = JsonDocument.Parse(JsonSerializer.Serialize(new
         {
             barcode = normalizedBarcode,
             printed,
@@ -434,6 +452,9 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             printer = printer ?? string.Empty,
             status,
         }));
+        printResult?.Dispose();
+
+        return result;
     }
 
     private async Task<JsonDocument> GetBarcodeOrderDetailsAsync(
@@ -550,7 +571,7 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         return $"{unit}||****||{order}";
     }
 
-    private bool ShouldGenerateDevelopmentPrintPdf()
+    private bool ShouldGeneratePrintPdf()
     {
         return _options.ActiveEnvironment.Equals("Dev", StringComparison.OrdinalIgnoreCase) ||
             _options.ActiveEnvironment.Equals("Homol", StringComparison.OrdinalIgnoreCase);
@@ -562,7 +583,9 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         string documentId,
         string? printer,
         string clientCode,
-        int? orderStatus)
+        int? orderStatus,
+        bool printed,
+        string printMessage)
     {
         var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "dev-prints");
         Directory.CreateDirectory(outputDirectory);
@@ -579,8 +602,10 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             $"Codigo cliente: {clientCode}",
             $"Status exames pedido: {orderStatus}",
             $"Impressora configurada: {printer ?? "-"}",
+            $"Impressao confirmada: {(printed ? "Sim" : "Nao")}",
+            $"Mensagem impressao: {printMessage}",
             $"Gerado em: {DateTimeOffset.Now:dd/MM/yyyy HH:mm:ss}",
-            "Este PDF substitui a chamada de impressao apenas em Dev/Homol.",
+            "Este PDF e gerado apenas em Dev/Homol apos a tentativa de impressao.",
         };
 
         File.WriteAllBytes(filePath, BuildSimplePdf(lines));
