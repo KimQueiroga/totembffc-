@@ -45,6 +45,8 @@ public interface ILaboratoryApiClient
         string? unit,
         CancellationToken cancellationToken);
 
+    Task<JsonDocument> GetRelationshipsAsync(CancellationToken cancellationToken);
+
     Task<JsonDocument> PrintResultByBarcodeAsync(
         string barcode,
         string? printer,

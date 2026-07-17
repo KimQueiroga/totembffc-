@@ -356,6 +356,41 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         }
     }
 
+    public async Task<JsonDocument> GetRelationshipsAsync(CancellationToken cancellationToken)
+    {
+        const string url = "https://psc-hml-api.hermespardini.com.br/LisPardini/v1/parentesco/";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Relationship request failed. StatusCode={StatusCode}, Body={Body}",
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao consultar parentescos. HTTP {(int)response.StatusCode}.");
+        }
+
+        try
+        {
+            return JsonDocument.Parse(content);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Relationship response is invalid JSON. Body={Body}",
+                content);
+
+            throw new LaboratoryApiException("Resposta de parentescos da API nao e um JSON valido.");
+        }
+    }
+
     public async Task<JsonDocument> PrintResultByBarcodeAsync(
         string barcode,
         string? printer,

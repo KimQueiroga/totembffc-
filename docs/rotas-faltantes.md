@@ -53,3 +53,11 @@ novo a definir.
     conservante.
   - Ate a rota existir, a coluna `Conservante` deve permanecer sem valor
     operacional, evitando inferencia a partir de `basic/exams`.
+
+- Finalizacao de pedido com terceiros autorizados
+  - Status: pendente de contrato de finalizacao.
+  - Situacao atual: o app captura a lista de terceiros autorizados no fluxo de
+    check-in, incluindo nome, grau de parentesco, tipo de documento, numero do
+    documento e a opcao de terceiro nao identificado.
+  - Necessidade: incluir essas informacoes no payload da API de finalizacao do
+    pedido quando o contrato dessa etapa for definido.
