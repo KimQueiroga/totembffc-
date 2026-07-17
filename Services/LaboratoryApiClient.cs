@@ -999,6 +999,11 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
                 candidates.Add(appendedContent);
             }
 
+            if (TryRepairUnterminatedTrailingString(normalizedContent, out var repairedTrailingStringContent))
+            {
+                candidates.Add(repairedTrailingStringContent);
+            }
+
             if (TryExtractFirstBalancedJson(normalizedContent, out var extractedContent))
             {
                 candidates.Add(extractedContent);
@@ -1299,6 +1304,56 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         }
 
         json = content + missingClosings;
+        return true;
+    }
+
+    private static bool TryRepairUnterminatedTrailingString(string content, out string json)
+    {
+        var inString = false;
+        var escaped = false;
+
+        foreach (var character in content)
+        {
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                }
+                else if (character == '\\')
+                {
+                    escaped = true;
+                }
+                else if (character == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (character == '"')
+            {
+                inString = true;
+            }
+        }
+
+        if (!inString)
+        {
+            json = string.Empty;
+            return false;
+        }
+
+        var builder = new StringBuilder(content);
+
+        if (escaped)
+        {
+            builder.Append('\\');
+        }
+
+        builder.Append('"');
+        builder.Append(GetMissingContainerClosings(builder.ToString()));
+        json = builder.ToString();
         return true;
     }
 
