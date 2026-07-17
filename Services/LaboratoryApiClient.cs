@@ -338,7 +338,22 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             throw new LaboratoryApiException($"Falha ao consultar exames. HTTP {(int)response.StatusCode}.");
         }
 
-        return JsonDocument.Parse(content);
+        try
+        {
+            return JsonDocument.Parse(content);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Exam search response is invalid JSON. Keyword={Keyword}, HealthPlan={HealthPlan}, Unit={Unit}, Body={Body}",
+                keyword,
+                queryHealthPlan,
+                queryUnit,
+                content);
+
+            return JsonDocument.Parse("[]");
+        }
     }
 
     public async Task<JsonDocument> PrintResultByBarcodeAsync(
