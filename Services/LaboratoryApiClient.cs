@@ -359,9 +359,15 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
     public async Task<JsonDocument> GetRelationshipsAsync(CancellationToken cancellationToken)
     {
         const string url = "https://psc-hml-api.hermespardini.com.br/LisPardini/v1/parentesco/";
+        var environment = GetActiveEnvironment();
+        ValidateCredentials(environment);
+        var apiToken = await GetServiceTokenAsync(environment, cancellationToken);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        request.Headers.Add("token", apiToken);
+        request.Headers.Add("origem", environment.Username);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
