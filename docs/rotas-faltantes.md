@@ -39,3 +39,17 @@ novo a definir.
     terminal e tambem gera um PDF local em `/dev-prints` registrando se a
     impressao foi confirmada. Em Prod, somente chama a rota legada de
     impressao.
+
+## Pre-atendimento
+
+- Conservante do exame
+  - Status: pendente de contrato novo.
+  - Situacao atual: o app usa `attendanceRest/v1/basic/exams` apenas para o
+    de/para geral dos exames autorizados. Essa rota nao detalha com seguranca
+    se o exame possui conservante no contexto do pre-atendimento.
+  - Necessidade: criar uma rota especifica para retornar os dados de
+    conservante por exame/procedimento no contexto da guia de pre-atendimento,
+    incluindo, no minimo, identificador, nome e cor/indicador visual do
+    conservante.
+  - Ate a rota existir, a coluna `Conservante` deve permanecer sem valor
+    operacional, evitando inferencia a partir de `basic/exams`.
