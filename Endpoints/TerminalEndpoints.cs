@@ -292,6 +292,79 @@ public static class TerminalEndpoints
             }
         });
 
+        api.MapGet("/exams/{examId}/questionnaire", async (
+            string examId,
+            string? clientToken,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(examId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["examId"] = new[] { "Codigo do exame deve ser informado." },
+                });
+            }
+
+            try
+            {
+                using var response = await laboratoryApi.CheckExamQuestionnaireAsync(
+                    examId.Trim(),
+                    clientToken,
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
+        api.MapGet("/questionnaires", async (
+            string material,
+            string exam,
+            string gender,
+            string birthDate,
+            string? clientToken,
+            ILaboratoryApiClient laboratoryApi,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateQuestionnaireRequest(material, exam, gender, birthDate);
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            try
+            {
+                using var response = await laboratoryApi.GetQuestionnairesAsync(
+                    material.Trim(),
+                    exam.Trim(),
+                    gender.Trim(),
+                    birthDate.Trim(),
+                    clientToken,
+                    cancellationToken);
+                var json = response.RootElement.GetRawText();
+
+                return Results.Content(json, "application/json");
+            }
+            catch (LaboratoryApiConfigurationException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            }
+            catch (LaboratoryApiException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
         api.MapPost("/barcode-result/print", async (
             BarcodeResultPrintRequest request,
             ILaboratoryApiClient laboratoryApi,
@@ -360,6 +433,37 @@ public static class TerminalEndpoints
         {
             return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
         }
+    }
+
+    private static Dictionary<string, string[]> ValidateQuestionnaireRequest(
+        string material,
+        string exam,
+        string gender,
+        string birthDate)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (string.IsNullOrWhiteSpace(material))
+        {
+            errors["material"] = new[] { "Material do exame deve ser informado." };
+        }
+
+        if (string.IsNullOrWhiteSpace(exam))
+        {
+            errors["exam"] = new[] { "Sigla do exame deve ser informada." };
+        }
+
+        if (string.IsNullOrWhiteSpace(gender))
+        {
+            errors["gender"] = new[] { "Genero do cliente deve ser informado." };
+        }
+
+        if (string.IsNullOrWhiteSpace(birthDate))
+        {
+            errors["birthDate"] = new[] { "Data de nascimento do cliente deve ser informada." };
+        }
+
+        return errors;
     }
 
     private static Dictionary<string, string[]> ValidateClientTokenRequest(ClientTokenRequest request)

@@ -356,6 +356,109 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
         }
     }
 
+    public async Task<JsonDocument> CheckExamQuestionnaireAsync(
+        string examId,
+        string? clientToken,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        ValidateCredentials(environment);
+
+        var apiToken = string.IsNullOrWhiteSpace(clientToken)
+            ? await GetServiceTokenAsync(environment, cancellationToken)
+            : clientToken;
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/attendanceRest/v1/basic/exams/{Uri.EscapeDataString(examId)}/questionnaire";
+
+        using var request = CreateAttendanceRestGetRequest(url, apiToken, environment.Username);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Exam questionnaire check request failed. ExamId={ExamId}, StatusCode={StatusCode}, Body={Body}",
+                examId,
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao verificar questionario do exame. HTTP {(int)response.StatusCode}.");
+        }
+
+        try
+        {
+            return JsonDocument.Parse(content);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Exam questionnaire check response is invalid JSON. ExamId={ExamId}, Body={Body}",
+                examId,
+                content);
+
+            throw new LaboratoryApiException("Resposta de verificacao de questionario da API nao e um JSON valido.");
+        }
+    }
+
+    public async Task<JsonDocument> GetQuestionnairesAsync(
+        string material,
+        string exam,
+        string gender,
+        string birthDate,
+        string? clientToken,
+        CancellationToken cancellationToken)
+    {
+        var environment = GetActiveEnvironment();
+        ValidateCredentials(environment);
+
+        var apiToken = string.IsNullOrWhiteSpace(clientToken)
+            ? await GetServiceTokenAsync(environment, cancellationToken)
+            : clientToken;
+        var query = string.Join(
+            "&",
+            $"material={Uri.EscapeDataString(material)}",
+            $"exam={Uri.EscapeDataString(exam)}",
+            $"gender={Uri.EscapeDataString(gender)}",
+            $"birthDate={Uri.EscapeDataString(birthDate)}");
+        var url = $"{environment.BaseUrl.TrimEnd('/')}/attendanceRest/v1/basic/questionnaires?{query}";
+
+        using var request = CreateAttendanceRestGetRequest(url, apiToken, environment.Username);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Questionnaire list request failed. Exam={Exam}, Material={Material}, Gender={Gender}, BirthDate={BirthDate}, StatusCode={StatusCode}, Body={Body}",
+                exam,
+                material,
+                gender,
+                birthDate,
+                (int)response.StatusCode,
+                content);
+
+            throw new LaboratoryApiException($"Falha ao consultar perguntas do questionario. HTTP {(int)response.StatusCode}.");
+        }
+
+        try
+        {
+            return JsonDocument.Parse(content);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Questionnaire list response is invalid JSON. Exam={Exam}, Material={Material}, Gender={Gender}, BirthDate={BirthDate}, Body={Body}",
+                exam,
+                material,
+                gender,
+                birthDate,
+                content);
+
+            throw new LaboratoryApiException("Resposta de questionarios da API nao e um JSON valido.");
+        }
+    }
+
     public async Task<JsonDocument> GetRelationshipsAsync(CancellationToken cancellationToken)
     {
         const string url = "https://psc-hml-api.hermespardini.com.br/LisPardini/v1/parentesco/";
@@ -395,6 +498,19 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
 
             throw new LaboratoryApiException("Resposta de parentescos da API nao e um JSON valido.");
         }
+    }
+
+    private static HttpRequestMessage CreateAttendanceRestGetRequest(
+        string url,
+        string token,
+        string origem)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Add("token", token);
+        request.Headers.Add("origem", origem);
+
+        return request;
     }
 
     public async Task<JsonDocument> PrintResultByBarcodeAsync(

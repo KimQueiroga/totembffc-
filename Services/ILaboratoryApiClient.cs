@@ -45,6 +45,19 @@ public interface ILaboratoryApiClient
         string? unit,
         CancellationToken cancellationToken);
 
+    Task<JsonDocument> CheckExamQuestionnaireAsync(
+        string examId,
+        string? clientToken,
+        CancellationToken cancellationToken);
+
+    Task<JsonDocument> GetQuestionnairesAsync(
+        string material,
+        string exam,
+        string gender,
+        string birthDate,
+        string? clientToken,
+        CancellationToken cancellationToken);
+
     Task<JsonDocument> GetRelationshipsAsync(CancellationToken cancellationToken);
 
     Task<JsonDocument> PrintResultByBarcodeAsync(
