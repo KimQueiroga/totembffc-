@@ -440,23 +440,14 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             throw new LaboratoryApiException($"Falha ao consultar perguntas do questionario. HTTP {(int)response.StatusCode}.");
         }
 
-        try
-        {
-            return JsonDocument.Parse(content);
-        }
-        catch (JsonException exception)
-        {
-            _logger.LogWarning(
-                exception,
-                "Questionnaire list response is invalid JSON. Exam={Exam}, Material={Material}, Gender={Gender}, BirthDate={BirthDate}, Body={Body}",
-                exam,
-                material,
-                gender,
-                birthDate,
-                content);
-
-            throw new LaboratoryApiException("Resposta de questionarios da API nao e um JSON valido.");
-        }
+        return ParseLaboratoryJsonContent(
+            content,
+            "questionarios",
+            "Questionnaire list response is invalid JSON. Exam={Exam}, Material={Material}, Gender={Gender}, BirthDate={BirthDate}",
+            exam,
+            material,
+            gender,
+            birthDate);
     }
 
     public async Task<JsonDocument> GetRelationshipsAsync(CancellationToken cancellationToken)
@@ -980,6 +971,73 @@ public sealed class LaboratoryApiClient : ILaboratoryApiClient
             }
 
             throw new LaboratoryApiException($"Resposta de pre atendimento da API do laboratorio nao e um JSON valido. {details}");
+        }
+    }
+
+    private JsonDocument ParseLaboratoryJsonContent(
+        string content,
+        string responseDescription,
+        string logMessage,
+        params object[] logArguments)
+    {
+        try
+        {
+            return JsonDocument.Parse(content, TolerantJsonOptions);
+        }
+        catch (JsonException exception)
+        {
+            var normalizedContent = content.TrimStart('\uFEFF').Trim();
+            var candidates = new List<string>
+            {
+                normalizedContent,
+                TrimToLastBalancedJson(normalizedContent),
+                RepairTrailingStatusString(RepairPreAttendanceJson(normalizedContent)),
+            };
+
+            if (TryAppendMissingContainerClosings(normalizedContent, out var appendedContent))
+            {
+                candidates.Add(appendedContent);
+            }
+
+            if (TryExtractFirstBalancedJson(normalizedContent, out var extractedContent))
+            {
+                candidates.Add(extractedContent);
+            }
+
+            foreach (var candidate in candidates.Distinct(StringComparer.Ordinal))
+            {
+                if (candidate == content)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    return JsonDocument.Parse(candidate, TolerantJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    // Tenta o proximo reparo candidato.
+                }
+            }
+
+            var details = DescribeJsonException(exception);
+            var detailsArguments = logArguments
+                .Concat(new object[]
+                {
+                    content.Length,
+                    details,
+                    GetJsonErrorSnippet(content, exception),
+                    GetJsonEndSnippet(content),
+                })
+                .ToArray();
+
+            _logger.LogWarning(
+                exception,
+                $"{logMessage}. BodyLength={{BodyLength}}, Error={{Error}}, Snippet={{Snippet}}, Tail={{Tail}}",
+                detailsArguments);
+
+            throw new LaboratoryApiException($"Resposta de {responseDescription} da API nao e um JSON valido. {details}");
         }
     }
 
